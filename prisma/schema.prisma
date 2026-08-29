@@ -1,0 +1,386 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  OWNER
+  MANAGER
+  CASHIER
+  KITCHEN
+  STAFF
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  PREPARING
+  SERVED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  PROMPTPAY
+  CARD
+}
+
+enum WageType {
+  DAILY
+  HOURLY
+  MONTHLY
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  LEAVE
+}
+
+// ─── User & Auth ──────────────────────────────────────────────────────────────
+
+model User {
+  id             String   @id @default(cuid())
+  username       String   @unique
+  passwordHash   String
+  role           Role     @default(STAFF)
+  permissions    String[] @default([])
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  staffProfile   StaffProfile?
+  auditLogs      AuditLog[]
+  orderStatusLogs OrderStatusLog[]
+  bills          Bill[]
+  attendanceEdits AttendanceLog[] @relation("AttendanceEditor")
+
+  @@index([username])
+  @@index([role])
+}
+
+// ─── Restaurant Settings ──────────────────────────────────────────────────────
+
+model RestaurantSetting {
+  id                    String  @id @default(cuid())
+  name                  String  @default("ร้านอาหาร")
+  logoUrl               String?
+  coverImageUrl         String?
+  phone                 String?
+  lineId                String?
+  address               String?
+  themeColor            String  @default("#E85D04")
+  serviceChargeEnabled  Boolean @default(false)
+  serviceChargePercent  Float   @default(10.0)
+  vatEnabled            Boolean @default(true)
+  vatPercent            Float   @default(7.0)
+  receiptFooter         String? @default("ขอบคุณที่ใช้บริการ")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// ─── Categories ───────────────────────────────────────────────────────────────
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  isVisible Boolean    @default(true)
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  menuItems MenuItem[]
+
+  @@index([isVisible, sortOrder])
+}
+
+// ─── Menu Items ───────────────────────────────────────────────────────────────
+
+model MenuItem {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  categoryId  String
+  isAvailable Boolean  @default(true)
+  isFeatured  Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category    Category        @relation(fields: [categoryId], references: [id])
+  images      MenuItemImage[]
+  orderItems  OrderItem[]
+
+  @@index([categoryId])
+  @@index([isAvailable])
+  @@index([isFeatured])
+  @@index([sortOrder])
+}
+
+model MenuItemImage {
+  id           String   @id @default(cuid())
+  menuItemId   String
+  url          String
+  thumbnailUrl String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  menuItem     MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@index([menuItemId, sortOrder])
+}
+
+// ─── Promotions ───────────────────────────────────────────────────────────────
+
+model Promotion {
+  id             String    @id @default(cuid())
+  name           String
+  description    String?
+  imageUrl       String?
+  startDate      DateTime?
+  endDate        DateTime?
+  isActive       Boolean   @default(true)
+  discountType   String?   // "flat" | "percent"
+  discountValue  Float?
+  minOrderAmount Float?
+  autoApply      Boolean   @default(false)
+  canStack       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([isActive])
+  @@index([startDate, endDate])
+}
+
+// ─── Dining Tables ────────────────────────────────────────────────────────────
+
+model DiningTable {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  qrToken   String   @unique @default(cuid())
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+  bills     Bill[]
+
+  @@index([qrToken])
+  @@index([isActive])
+}
+
+// ─── Orders ───────────────────────────────────────────────────────────────────
+
+model Order {
+  id         String      @id @default(cuid())
+  tableId    String
+  status     OrderStatus @default(PENDING)
+  note       String?
+  billedAt   DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  table      DiningTable    @relation(fields: [tableId], references: [id])
+  items      OrderItem[]
+  statusLogs OrderStatusLog[]
+
+  @@index([tableId])
+  @@index([status])
+  @@index([billedAt])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id           String   @id @default(cuid())
+  orderId      String
+  menuItemId   String?
+  menuItemName String
+  price        Float
+  quantity     Int
+  note         String?
+  createdAt    DateTime @default(now())
+
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem     MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+model OrderStatusLog {
+  id          String      @id @default(cuid())
+  orderId     String
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  changedById String?
+  createdAt   DateTime    @default(now())
+
+  order       Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedBy   User?  @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+// ─── Billing ──────────────────────────────────────────────────────────────────
+
+model Bill {
+  id            String        @id @default(cuid())
+  billNumber    String        @unique
+  tableId       String
+  subtotal      Float
+  discount      Float         @default(0)
+  discountType  String?       // "flat" | "percent"
+  promotionIds  String[]      @default([])
+  promotionSummary Json?
+  serviceCharge Float         @default(0)
+  vat           Float         @default(0)
+  grandTotal    Float
+  paymentMethod PaymentMethod
+  isPaid        Boolean       @default(false)
+  paidAt        DateTime?
+  createdById   String?
+  note          String?
+  receiptFooter String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  table         DiningTable @relation(fields: [tableId], references: [id])
+  createdBy     User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items         BillItem[]
+  payments      Payment[]
+
+  @@index([tableId])
+  @@index([isPaid])
+  @@index([createdAt])
+  @@index([billNumber])
+}
+
+model BillItem {
+  id           String @id @default(cuid())
+  billId       String
+  menuItemName String
+  quantity     Int
+  unitPrice    Float
+  totalPrice   Float
+
+  bill         Bill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  billId    String
+  amount    Float
+  method    PaymentMethod
+  note      String?
+  createdAt DateTime      @default(now())
+
+  bill      Bill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+}
+
+// ─── Staff & HR ───────────────────────────────────────────────────────────────
+
+model StaffProfile {
+  id         String   @id @default(cuid())
+  userId     String?  @unique
+  name       String
+  phone      String?
+  position   String?
+  wageType   WageType @default(DAILY)
+  wageRate   Float    @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  attendance AttendanceLog[]
+  payrolls   PayrollSummary[]
+
+  @@index([isActive])
+}
+
+model StaffPosition {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  permissions String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AttendanceLog {
+  id             String           @id @default(cuid())
+  staffProfileId String
+  date           DateTime         @db.Date
+  checkIn        DateTime?
+  checkOut       DateTime?
+  status         AttendanceStatus @default(PRESENT)
+  note           String?
+  editedById     String?
+  editReason     String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  staffProfile   StaffProfile @relation(fields: [staffProfileId], references: [id], onDelete: Cascade)
+  editedBy       User?        @relation("AttendanceEditor", fields: [editedById], references: [id], onDelete: SetNull)
+
+  @@unique([staffProfileId, date])
+  @@index([staffProfileId])
+  @@index([date])
+  @@index([status])
+}
+
+model PayrollSummary {
+  id             String   @id @default(cuid())
+  staffProfileId String
+  month          Int      // 1-12
+  year           Int
+  totalDays      Float    @default(0)
+  totalHours     Float    @default(0)
+  totalWage      Float    @default(0)
+  deductions     Float    @default(0)
+  netWage        Float    @default(0)
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  staffProfile   StaffProfile @relation(fields: [staffProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([staffProfileId, month, year])
+  @@index([staffProfileId])
+  @@index([year, month])
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user       User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+}

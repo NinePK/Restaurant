@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env
+test-results/
+*.tsbuildinfo
+*.log
+.DS_Store
+public/uploads/*
+!public/uploads/.gitkeep
