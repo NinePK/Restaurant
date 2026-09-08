@@ -5,6 +5,8 @@ import { writeAuditLog } from "@/lib/audit";
 import { endOfBangkokDay, startOfBangkokDay } from "@/lib/business-time";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const optionalNumberField = z.preprocess(
   (value) => (value === "" || value === null || value === undefined ? undefined : Number(value)),
   z.number().min(0).optional()

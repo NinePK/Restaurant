@@ -4,6 +4,8 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const categorySchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่"),
   isVisible: z.boolean().default(true),

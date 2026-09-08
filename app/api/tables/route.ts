@@ -5,6 +5,8 @@ import { writeAuditLog } from "@/lib/audit";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 
+export const dynamic = "force-dynamic";
+
 const tableSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อโต๊ะ"),
   isActive: z.boolean().default(true),
